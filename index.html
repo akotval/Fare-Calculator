@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Zipo Fare Calculator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: #0c0e12;
+    color: #e0e2e6;
+    font-family: 'DM Sans', 'Helvetica Neue', sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  input[type=number]::-webkit-inner-spin-button,
+  input[type=number]::-webkit-outer-spin-button {
+    opacity: 1;
+  }
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #12141a; }
+  ::-webkit-scrollbar-thumb { background: #2a2d34; border-radius: 3px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useCallback } = React;
+
+// ─── Config ───
+const STORAGE_KEY = "zipo_fare_models";
+
+const DEFAULT_MODELS = [
+  { id: "zipo",  name: "Zipo",  color: "#4DB6AC", baseFare: 2.5, perMinute: 0.15, perKm: 1.2,  surge: 1.0, minFare: 5.0, bookingFee: 0   },
+  { id: "uber",  name: "Uber",  color: "#F06292", baseFare: 2.5, perMinute: 0.2,  perKm: 1.25, surge: 1.0, minFare: 6.5, bookingFee: 2.0 },
+  { id: "bolt",  name: "Bolt",  color: "#42A5F5", baseFare: 2.0, perMinute: 0.18, perKm: 1.15, surge: 1.0, minFare: 5.0, bookingFee: 1.5 },
+];
+
+const PRESETS = [
+  { label: "Short (2 km / 8 min)",    distance: 2,  duration: 8  },
+  { label: "Medium (8 km / 20 min)",  distance: 8,  duration: 20 },
+  { label: "Long (20 km / 40 min)",   distance: 20, duration: 40 },
+  { label: "Airport (35 km / 55 min)",distance: 35, duration: 55 },
+];
+
+const BATCH_TRIPS = [
+  { label: "School run",  distance: 3,  duration: 10 },
+  { label: "City centre", distance: 6,  duration: 18 },
+  { label: "Cross-town",  distance: 12, duration: 30 },
+  { label: "Heathrow",    distance: 30, duration: 50 },
+  { label: "Gatwick",     distance: 45, duration: 65 },
+];
+
+// ─── Helpers ───
+function calcFare(model, distance, duration) {
+  const before = model.baseFare + model.perMinute * duration + model.perKm * distance + (model.bookingFee || 0);
+  const after = before * (model.surge || 1);
+  return Math.max(after, model.minFare || 0);
+}
+
+function fmt(n) { return n.toFixed(2); }
+
+function loadFromStorage(key, fallback) {
+  try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : fallback; }
+  catch { return fallback; }
+}
+
+// ─── Shared styles ───
+function btnStyle(bg, fg) {
+  return {
+    background: bg, color: fg, border: "none", borderRadius: 8,
+    padding: "8px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer",
+    fontFamily: "inherit", letterSpacing: "0.02em", transition: "opacity 0.15s",
+  };
+}
+
+const card = { background: "#12141a", borderRadius: 12, border: "1px solid #1e2128", padding: 20 };
+const thStyle = { textAlign: "left", padding: "10px 14px", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.08em", color: "#5a5f68", fontWeight: 700, borderBottom: "1px solid #1e2128" };
+const tdStyle = { padding: "10px 14px", borderBottom: "1px solid #1a1d24", fontSize: 13 };
+
+// ─── Field component ───
+function Field({ label, value, onChange, unit, min = 0, step = 0.01 }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <label style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.08em", color: "#8a8f98", fontWeight: 600 }}>{label}</label>
+      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+        {unit === "\u00A3" && <span style={{ color: "#5a5f68", fontSize: 13, fontWeight: 700 }}>{"\u00A3"}</span>}
+        <input
+          type="number" min={min} step={step} value={value}
+          onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
+          style={{
+            width: "100%", background: "#1a1d24", border: "1px solid #2a2d34",
+            borderRadius: 6, padding: "7px 10px", color: "#e0e2e6", fontSize: 14,
+            fontFamily: "'JetBrains Mono', 'Fira Code', monospace", outline: "none",
+            transition: "border-color 0.15s",
+          }}
+          onFocus={(e) => (e.target.style.borderColor = "#4DB6AC")}
+          onBlur={(e) => (e.target.style.borderColor = "#2a2d34")}
+        />
+        {unit && unit !== "\u00A3" && <span style={{ color: "#5a5f68", fontSize: 12, fontWeight: 600, minWidth: 28 }}>{unit}</span>}
+      </div>
+    </div>
+  );
+}
+
+// ─── App ───
+function App() {
+  const [models, setModels] = useState(() => loadFromStorage(STORAGE_KEY, DEFAULT_MODELS));
+  const [distance, setDistance] = useState(8);
+  const [duration, setDuration] = useState(20);
+  const [tab, setTab] = useState("single");
+
+  useEffect(() => {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(models)); } catch {}
+  }, [models]);
+
+  const updateModel = useCallback((id, field, value) => {
+    setModels((prev) => prev.map((m) => (m.id === id ? { ...m, [field]: value } : m)));
+  }, []);
+
+  const removeModel = useCallback((id) => {
+    setModels((prev) => prev.filter((m) => m.id !== id));
+  }, []);
+
+  const addModel = useCallback(() => {
+    const hues = [340, 200, 30, 280, 160, 60];
+    const hue = hues[models.length % hues.length];
+    setModels((prev) => [...prev, {
+      id: `model_${Date.now()}`, name: `Model ${models.length + 1}`,
+      color: `hsl(${hue}, 70%, 65%)`, baseFare: 2.0, perMinute: 0.15,
+      perKm: 1.0, surge: 1.0, minFare: 0, bookingFee: 0,
+    }]);
+  }, [models.length]);
+
+  const resetModels = useCallback(() => setModels(DEFAULT_MODELS), []);
+
+  // Results
+  const results = models.map((m) => ({ ...m, fare: calcFare(m, distance, duration) }));
+  const cheapest = Math.min(...results.map((r) => r.fare));
+
+  // CSV export
+  const exportCSV = () => {
+    const trips = tab === "batch" ? BATCH_TRIPS : [{ label: "Custom", distance, duration }];
+    let csv = "Trip,Distance (km),Duration (min)," + models.map((m) => m.name + " (\u00A3)").join(",") + "\n";
+    trips.forEach((t) => {
+      const fares = models.map((m) => fmt(calcFare(m, t.distance, t.duration)));
+      csv += `"${t.label}",${t.distance},${t.duration},${fares.join(",")}\n`;
+    });
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url;
+    a.download = `zipo_fare_comparison_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click(); URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div style={{ minHeight: "100vh", padding: "24px 16px", maxWidth: 1200, margin: "0 auto" }}>
+
+      {/* ─── Header ─── */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 28, flexWrap: "wrap", gap: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <div style={{
+            width: 38, height: 38, borderRadius: 10,
+            background: "linear-gradient(135deg, #4DB6AC, #3FA99E)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontWeight: 900, fontSize: 16, color: "#fff", letterSpacing: "-0.02em",
+          }}>Z</div>
+          <div>
+            <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1.1 }}>Zipo Fare Calculator</h1>
+            <p style={{ margin: 0, fontSize: 12, color: "#5a5f68", fontWeight: 500, letterSpacing: "0.04em" }}>INTERNAL SIMULATION TOOL</p>
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={exportCSV} style={btnStyle("#1e2128", "#8a8f98")}>Export CSV</button>
+          <button onClick={resetModels} style={btnStyle("#1e2128", "#8a8f98")}>Reset</button>
+        </div>
+      </div>
+
+      {/* ─── Trip Parameters ─── */}
+      <div style={{ ...card, marginBottom: 20 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 8 }}>
+          <h2 style={{ margin: 0, fontSize: 14, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: "#8a8f98" }}>Trip Parameters</h2>
+          <div style={{ display: "flex", gap: 6 }}>
+            {["single", "batch"].map((t) => (
+              <button key={t} onClick={() => setTab(t)} style={{
+                ...btnStyle(tab === t ? "#4DB6AC" : "#1a1d24", tab === t ? "#0c0e12" : "#8a8f98"),
+                fontWeight: tab === t ? 700 : 500, fontSize: 12, padding: "5px 14px",
+              }}>{t === "single" ? "Single Trip" : "Batch Compare"}</button>
+            ))}
+          </div>
+        </div>
+        {tab === "single" && (
+          <React.Fragment>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 14, marginBottom: 14 }}>
+              <Field label="Distance" value={distance} onChange={setDistance} unit="km" step={0.5} />
+              <Field label="Duration" value={duration} onChange={setDuration} unit="min" step={1} />
+            </div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {PRESETS.map((p) => (
+                <button key={p.label} onClick={() => { setDistance(p.distance); setDuration(p.duration); }}
+                  style={{ ...btnStyle("#1a1d24", "#8a8f98"), fontSize: 11, padding: "5px 12px", borderRadius: 20 }}>
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </React.Fragment>
+        )}
+      </div>
+
+      {/* ─── Batch Table ─── */}
+      {tab === "batch" && (
+        <div style={{ ...card, marginBottom: 20, overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <thead>
+              <tr>
+                <th style={thStyle}>Trip</th>
+                <th style={thStyle}>km</th>
+                <th style={thStyle}>min</th>
+                {models.map((m) => <th key={m.id} style={{ ...thStyle, color: m.color }}>{m.name}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {BATCH_TRIPS.map((t, i) => {
+                const fares = models.map((m) => calcFare(m, t.distance, t.duration));
+                const bMin = Math.min(...fares);
+                return (
+                  <tr key={i}>
+                    <td style={tdStyle}>{t.label}</td>
+                    <td style={{ ...tdStyle, fontFamily: "monospace" }}>{t.distance}</td>
+                    <td style={{ ...tdStyle, fontFamily: "monospace" }}>{t.duration}</td>
+                    {fares.map((f, j) => (
+                      <td key={j} style={{
+                        ...tdStyle, fontFamily: "'JetBrains Mono', monospace",
+                        fontWeight: f === bMin ? 800 : 500, color: f === bMin ? "#4DB6AC" : "#e0e2e6",
+                      }}>
+                        {"\u00A3"}{fmt(f)}
+                        {f !== bMin && (
+                          <span style={{ fontSize: 10, color: "#F06292", marginLeft: 6 }}>
+                            +{fmt(((f - bMin) / bMin) * 100)}%
+                          </span>
+                        )}
+                      </td>
+                    ))}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* ─── Single Trip Results ─── */}
+      {tab === "single" && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14, marginBottom: 20 }}>
+          {results.map((r) => {
+            const diff = r.fare - cheapest;
+            const pctDiff = cheapest > 0 ? (diff / cheapest) * 100 : 0;
+            const isCheapest = diff === 0;
+            return (
+              <div key={r.id} style={{ ...card, borderColor: isCheapest ? r.color + "44" : "#1e2128", position: "relative", overflow: "hidden" }}>
+                <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: r.color }} />
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, marginTop: 4 }}>
+                  <span style={{ fontWeight: 800, fontSize: 16, color: r.color, letterSpacing: "-0.02em" }}>{r.name}</span>
+                  {isCheapest && (
+                    <span style={{
+                      fontSize: 10, fontWeight: 700, background: r.color + "22", color: r.color,
+                      padding: "3px 10px", borderRadius: 20, letterSpacing: "0.06em", textTransform: "uppercase",
+                    }}>Cheapest</span>
+                  )}
+                </div>
+                <div style={{ fontSize: 36, fontWeight: 900, fontFamily: "'JetBrains Mono', monospace", letterSpacing: "-0.04em", marginBottom: 8 }}>
+                  {"\u00A3"}{fmt(r.fare)}
+                </div>
+                {!isCheapest && (
+                  <div style={{ fontSize: 13, color: "#F06292", fontWeight: 600 }}>
+                    +{"\u00A3"}{fmt(diff)} ({fmt(pctDiff)}% more)
+                  </div>
+                )}
+                {isCheapest && results.length > 1 && (
+                  <div style={{ fontSize: 13, color: "#5a5f68", fontWeight: 500 }}>Lowest fare</div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ─── Pricing Models ─── */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
+        <h2 style={{ margin: 0, fontSize: 14, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: "#8a8f98" }}>Pricing Models</h2>
+        <button onClick={addModel} style={btnStyle("#4DB6AC", "#0c0e12")}>+ Add Model</button>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 14 }}>
+        {models.map((m) => (
+          <div key={m.id} style={{ ...card, position: "relative" }}>
+            <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: m.color }} />
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, marginTop: 4 }}>
+              <input value={m.name} onChange={(e) => updateModel(m.id, "name", e.target.value)}
+                style={{
+                  background: "transparent", border: "none", color: m.color, fontWeight: 800,
+                  fontSize: 16, fontFamily: "inherit", outline: "none", padding: 0, width: "60%",
+                }}
+              />
+              {models.length > 1 && (
+                <button onClick={() => removeModel(m.id)}
+                  style={{ background: "transparent", border: "none", color: "#5a5f68", cursor: "pointer", fontSize: 16, padding: "2px 6px", borderRadius: 4, lineHeight: 1 }}
+                  title="Remove model">{"\u00D7"}</button>
+              )}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <Field label="Base fare"   value={m.baseFare}   onChange={(v) => updateModel(m.id, "baseFare", v)}   unit={"\u00A3"} />
+              <Field label="Per minute"  value={m.perMinute}  onChange={(v) => updateModel(m.id, "perMinute", v)}  unit={"\u00A3"} />
+              <Field label="Per km"      value={m.perKm}      onChange={(v) => updateModel(m.id, "perKm", v)}      unit={"\u00A3"} />
+              <Field label="Surge"       value={m.surge}      onChange={(v) => updateModel(m.id, "surge", v)}      unit="x" step={0.1} />
+              <Field label="Min fare"    value={m.minFare}    onChange={(v) => updateModel(m.id, "minFare", v)}    unit={"\u00A3"} />
+              <Field label="Booking fee" value={m.bookingFee} onChange={(v) => updateModel(m.id, "bookingFee", v)} unit={"\u00A3"} />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* ─── Footer ─── */}
+      <div style={{ textAlign: "center", marginTop: 32, fontSize: 11, color: "#3a3d44", letterSpacing: "0.06em" }}>
+        ZIPO INTERNAL &mdash; NOT FOR DISTRIBUTION
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
