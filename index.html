@@ -19,10 +19,7 @@
     -webkit-font-smoothing: antialiased;
   }
   input[type=number]::-webkit-inner-spin-button,
-  input[type=number]::-webkit-outer-spin-button {
-    opacity: 1;
-  }
-  /* Scrollbar */
+  input[type=number]::-webkit-outer-spin-button { opacity: 1; }
   ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-track { background: #12141a; }
   ::-webkit-scrollbar-thumb { background: #2a2d34; border-radius: 3px; }
@@ -33,33 +30,31 @@
 <script type="text/babel">
 const { useState, useEffect, useCallback } = React;
 
-// ─── Config ───
 const STORAGE_KEY = "zipo_fare_models";
 
 const DEFAULT_MODELS = [
-  { id: "zipo",  name: "Zipo",  color: "#4DB6AC", baseFare: 2.5, perMinute: 0.15, perKm: 1.2,  surge: 1.0, minFare: 5.0, bookingFee: 0   },
-  { id: "uber",  name: "Uber",  color: "#F06292", baseFare: 2.5, perMinute: 0.2,  perKm: 1.25, surge: 1.0, minFare: 6.5, bookingFee: 2.0 },
-  { id: "bolt",  name: "Bolt",  color: "#42A5F5", baseFare: 2.0, perMinute: 0.18, perKm: 1.15, surge: 1.0, minFare: 5.0, bookingFee: 1.5 },
+  { id: "zipo", name: "Zipo", color: "#4DB6AC", baseFare: 2.5, perMinute: 0.15, perMile: 1.93, surge: 1.0, minFare: 5.0, bookingFee: 0 },
+  { id: "uber", name: "Uber", color: "#F06292", baseFare: 2.5, perMinute: 0.2, perMile: 2.01, surge: 1.0, minFare: 6.5, bookingFee: 2.0 },
+  { id: "bolt", name: "Bolt", color: "#42A5F5", baseFare: 2.0, perMinute: 0.18, perMile: 1.85, surge: 1.0, minFare: 5.0, bookingFee: 1.5 },
 ];
 
 const PRESETS = [
-  { label: "Short (2 km / 8 min)",    distance: 2,  duration: 8  },
-  { label: "Medium (8 km / 20 min)",  distance: 8,  duration: 20 },
-  { label: "Long (20 km / 40 min)",   distance: 20, duration: 40 },
-  { label: "Airport (35 km / 55 min)",distance: 35, duration: 55 },
+  { label: "Short (1.2 mi / 8 min)", distance: 1.2, duration: 8 },
+  { label: "Medium (5 mi / 20 min)", distance: 5, duration: 20 },
+  { label: "Long (12.5 mi / 40 min)", distance: 12.5, duration: 40 },
+  { label: "Airport (22 mi / 55 min)", distance: 22, duration: 55 },
 ];
 
 const BATCH_TRIPS = [
-  { label: "School run",  distance: 3,  duration: 10 },
-  { label: "City centre", distance: 6,  duration: 18 },
-  { label: "Cross-town",  distance: 12, duration: 30 },
-  { label: "Heathrow",    distance: 30, duration: 50 },
-  { label: "Gatwick",     distance: 45, duration: 65 },
+  { label: "School run", distance: 1.9, duration: 10 },
+  { label: "City centre", distance: 3.7, duration: 18 },
+  { label: "Cross-town", distance: 7.5, duration: 30 },
+  { label: "Heathrow", distance: 18.6, duration: 50 },
+  { label: "Gatwick", distance: 28, duration: 65 },
 ];
 
-// ─── Helpers ───
 function calcFare(model, distance, duration) {
-  const before = model.baseFare + model.perMinute * duration + model.perKm * distance + (model.bookingFee || 0);
+  const before = model.baseFare + model.perMinute * duration + model.perMile * distance + (model.bookingFee || 0);
   const after = before * (model.surge || 1);
   return Math.max(after, model.minFare || 0);
 }
@@ -71,7 +66,6 @@ function loadFromStorage(key, fallback) {
   catch { return fallback; }
 }
 
-// ─── Shared styles ───
 function btnStyle(bg, fg) {
   return {
     background: bg, color: fg, border: "none", borderRadius: 8,
@@ -84,7 +78,6 @@ const card = { background: "#12141a", borderRadius: 12, border: "1px solid #1e21
 const thStyle = { textAlign: "left", padding: "10px 14px", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.08em", color: "#5a5f68", fontWeight: 700, borderBottom: "1px solid #1e2128" };
 const tdStyle = { padding: "10px 14px", borderBottom: "1px solid #1a1d24", fontSize: 13 };
 
-// ─── Field component ───
 function Field({ label, value, onChange, unit, min = 0, step = 0.01 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
@@ -109,10 +102,9 @@ function Field({ label, value, onChange, unit, min = 0, step = 0.01 }) {
   );
 }
 
-// ─── App ───
 function App() {
   const [models, setModels] = useState(() => loadFromStorage(STORAGE_KEY, DEFAULT_MODELS));
-  const [distance, setDistance] = useState(8);
+  const [distance, setDistance] = useState(5);
   const [duration, setDuration] = useState(20);
   const [tab, setTab] = useState("single");
 
@@ -134,20 +126,18 @@ function App() {
     setModels((prev) => [...prev, {
       id: `model_${Date.now()}`, name: `Model ${models.length + 1}`,
       color: `hsl(${hue}, 70%, 65%)`, baseFare: 2.0, perMinute: 0.15,
-      perKm: 1.0, surge: 1.0, minFare: 0, bookingFee: 0,
+      perMile: 1.6, surge: 1.0, minFare: 0, bookingFee: 0,
     }]);
   }, [models.length]);
 
   const resetModels = useCallback(() => setModels(DEFAULT_MODELS), []);
 
-  // Results
   const results = models.map((m) => ({ ...m, fare: calcFare(m, distance, duration) }));
   const cheapest = Math.min(...results.map((r) => r.fare));
 
-  // CSV export
   const exportCSV = () => {
     const trips = tab === "batch" ? BATCH_TRIPS : [{ label: "Custom", distance, duration }];
-    let csv = "Trip,Distance (km),Duration (min)," + models.map((m) => m.name + " (\u00A3)").join(",") + "\n";
+    let csv = "Trip,Distance (mi),Duration (min)," + models.map((m) => m.name + " (\u00A3)").join(",") + "\n";
     trips.forEach((t) => {
       const fares = models.map((m) => fmt(calcFare(m, t.distance, t.duration)));
       csv += `"${t.label}",${t.distance},${t.duration},${fares.join(",")}\n`;
@@ -162,7 +152,6 @@ function App() {
   return (
     <div style={{ minHeight: "100vh", padding: "24px 16px", maxWidth: 1200, margin: "0 auto" }}>
 
-      {/* ─── Header ─── */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 28, flexWrap: "wrap", gap: 12 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
           <div style={{
@@ -182,7 +171,6 @@ function App() {
         </div>
       </div>
 
-      {/* ─── Trip Parameters ─── */}
       <div style={{ ...card, marginBottom: 20 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 8 }}>
           <h2 style={{ margin: 0, fontSize: 14, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: "#8a8f98" }}>Trip Parameters</h2>
@@ -198,7 +186,7 @@ function App() {
         {tab === "single" && (
           <React.Fragment>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 14, marginBottom: 14 }}>
-              <Field label="Distance" value={distance} onChange={setDistance} unit="km" step={0.5} />
+              <Field label="Distance" value={distance} onChange={setDistance} unit="mi" step={0.5} />
               <Field label="Duration" value={duration} onChange={setDuration} unit="min" step={1} />
             </div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -213,14 +201,13 @@ function App() {
         )}
       </div>
 
-      {/* ─── Batch Table ─── */}
       {tab === "batch" && (
         <div style={{ ...card, marginBottom: 20, overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
               <tr>
                 <th style={thStyle}>Trip</th>
-                <th style={thStyle}>km</th>
+                <th style={thStyle}>mi</th>
                 <th style={thStyle}>min</th>
                 {models.map((m) => <th key={m.id} style={{ ...thStyle, color: m.color }}>{m.name}</th>)}
               </tr>
@@ -255,7 +242,6 @@ function App() {
         </div>
       )}
 
-      {/* ─── Single Trip Results ─── */}
       {tab === "single" && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14, marginBottom: 20 }}>
           {results.map((r) => {
@@ -291,7 +277,6 @@ function App() {
         </div>
       )}
 
-      {/* ─── Pricing Models ─── */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
         <h2 style={{ margin: 0, fontSize: 14, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: "#8a8f98" }}>Pricing Models</h2>
         <button onClick={addModel} style={btnStyle("#4DB6AC", "#0c0e12")}>+ Add Model</button>
@@ -317,7 +302,7 @@ function App() {
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               <Field label="Base fare"   value={m.baseFare}   onChange={(v) => updateModel(m.id, "baseFare", v)}   unit={"\u00A3"} />
               <Field label="Per minute"  value={m.perMinute}  onChange={(v) => updateModel(m.id, "perMinute", v)}  unit={"\u00A3"} />
-              <Field label="Per km"      value={m.perKm}      onChange={(v) => updateModel(m.id, "perKm", v)}      unit={"\u00A3"} />
+              <Field label="Per mile"    value={m.perMile}    onChange={(v) => updateModel(m.id, "perMile", v)}    unit={"\u00A3"} />
               <Field label="Surge"       value={m.surge}      onChange={(v) => updateModel(m.id, "surge", v)}      unit="x" step={0.1} />
               <Field label="Min fare"    value={m.minFare}    onChange={(v) => updateModel(m.id, "minFare", v)}    unit={"\u00A3"} />
               <Field label="Booking fee" value={m.bookingFee} onChange={(v) => updateModel(m.id, "bookingFee", v)} unit={"\u00A3"} />
@@ -326,7 +311,6 @@ function App() {
         ))}
       </div>
 
-      {/* ─── Footer ─── */}
       <div style={{ textAlign: "center", marginTop: 32, fontSize: 11, color: "#3a3d44", letterSpacing: "0.06em" }}>
         ZIPO INTERNAL &mdash; NOT FOR DISTRIBUTION
       </div>
